@@ -1,5 +1,6 @@
 ARG VERSION
 FROM ghcr.io/ton-blockchain/ton-docker-ctrl:${VERSION}
+ARG VERSION
 LABEL org.opencontainers.image.version=${VERSION}
 ENV MODE=liteserver \
     GLOBAL_CONFIG_URL=https://ton.org/global.config.json \
