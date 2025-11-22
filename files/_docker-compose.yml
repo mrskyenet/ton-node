@@ -1,12 +1,11 @@
 services:
   ton-node:
-    image: mrskyenet/ton-node:${TON_VERSION:-latest}
     container_name: ton-node
+    image: ${TON_NODE_IMAGE}:${TON_NODE_VERSION}
     restart: unless-stopped
+    network_mode: host
     volumes:
-      - /mnt/hdd/ton-work:/var/ton-work
-    ports:
-      - "30303:30303/udp"
+      - ${BASE}/data:/var/ton-work
 
   ton-http-api:
     image: toncenter/ton-http-api:latest
