@@ -1,15 +1,13 @@
 ARG VERSION
-ARG TON_TAG=v2025.11
 FROM ubuntu:20.04
 ARG VERSION
-ARG TON_TAG
 LABEL org.opencontainers.image.version="${VERSION}"
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
       wget unzip fuse libfuse2 ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 RUN cd /tmp && \
-    wget https://github.com/ton-blockchain/ton/releases/download/${TON_TAG}/ton-linux-x86_64.zip && \
+    wget https://github.com/ton-blockchain/ton/releases/download/${VERSION}/ton-linux-x86_64.zip && \
     unzip ./ton-linux-x86_64.zip -d /usr/local/bin && \
     rm -f /tmp/ton-linux-x86_64.zip
 RUN chmod a+x /usr/local/bin/validator-engine /usr/local/bin/validator-engine-console
