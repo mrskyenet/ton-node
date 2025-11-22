@@ -11,11 +11,9 @@ RUN cd /tmp && \
     unzip ./ton-linux-x86_64.zip -d /usr/local/bin && \
     rm -f /tmp/ton-linux-x86_64.zip
 RUN chmod a+x /usr/local/bin/validator-engine /usr/local/bin/validator-engine-console
+RUN wget -O /global.config.json https://ton.org/global.config.json
 RUN mkdir -p /var/ton-work/db && \
     mkdir -p /var/ton-work/db/static
-ADD global-config.json /global-config.json
-ADD entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 WORKDIR /var/ton-work/db
 VOLUME ["/var/ton-work"]
-ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/local/bin/validator-engine", "-C", "/var/ton-work/db/config.json"]
