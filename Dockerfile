@@ -2,12 +2,23 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ---- Build-time config (feel free to tweak) ----
-ARG MODE=liteserver       # validator|liteserver|collator|...
-ARG NETWORK=mainnet       # mainnet|testnet
-ARG TELEMETRY=false       # true|false (false => pass -t)
-ARG IGNORE_REQS=true      # true|false (true => pass -i)
-ARG DUMP=true             # true|false (true => pass -d)
+# ---- Build-time config (no defaults here) ----
+ARG VERSION
+ARG MODE
+ARG NETWORK
+ARG TELEMETRY
+ARG IGNORE_REQS
+ARG DUMP
+
+# Optional: record image version metadata
+LABEL org.opencontainers.image.version="${VERSION}"
+
+# ---- Defaults if build args are not provided ----
+ENV MODE=${MODE:-liteserver} \
+    NETWORK=${NETWORK:-mainnet} \
+    TELEMETRY=${TELEMETRY:-false} \
+    IGNORE_REQS=${IGNORE_REQS:-true} \
+    DUMP=${DUMP:-true}
 
 # Env vars used by install.sh (from docs)
 ENV ARCHIVE_TTL=2592000 \
