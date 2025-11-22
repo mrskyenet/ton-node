@@ -1,23 +1,31 @@
 services:
   ton-node:
+    image: your-dockerhub-user/ton-mytonctrl:latest
     container_name: ton-node
-    image: ${TON_NODE_IMAGE}:${TON_NODE_VERSION}
     restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ${BASE}/data:/var/ton-work
 
-  ton-http-api:
-    image: toncenter/ton-http-api:latest
-    container_name: ton-http-api
-    restart: unless-stopped
-    depends_on:
-      - ton-node
-    ports:
-      - "8081:8081"
+    # Map host /ton to container /var/ton-work (data lives on host)
     volumes:
-      - /mnt/hdd/ton-work:/var/ton-work:ro
+      - /ton:/var/ton-work
+
+    # Environment -> mapped to install.sh flags
     environment:
-      TON_LITESERVER_CONFIG: /var/ton-work/db/liteserver.config.json
-      TON_HTTP_HOST: 0.0.0.0
-      TON_HTTP_PORT: 8081
+      MODE: "liteserver"          # -m liteserver
+      NETWORK: "mainnet"          # -n mainnet
+      DUMP: "true"                # -d (use dump)
+      TELEMETRY: "false"          # -t (disable telemetry)
+      IGNORE_REQS: "true"         # -i (skip 64GB RAM check)
+      INSTALL_USER: "ton"         # -u ton (installer user)
+
+      # Optional: tweak node TTLs
+      ARCHIVE_TTL: "2592000"      # 30 days
+      STATE_TTL: "86400"          # 1 day
+
+    # Ports – tune according to your config/global.config
+    ports:
+      - "30303:30303/tcp"
+      # add liteserver/ADNL ports once you know them
+
+    # To immediately drop into MyTonCtrl console after install:
+    # (entrypoint will run installer first, then exec this)
+    command: ["python3", "-m", "mytonctrl"]
