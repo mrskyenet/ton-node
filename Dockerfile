@@ -2,17 +2,18 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ---- Build-time args (for metadata only) ----
+# ---- Build-time version (passed from docker-compose) ----
 ARG VERSION
+LABEL org.opencontainers.image.version="${VERSION}"
+ENV TON_NODE_VERSION=${VERSION}
+
+# ---- Runtime defaults (overridable via env) ----
 ARG MODE
 ARG NETWORK
 ARG TELEMETRY
 ARG IGNORE_REQS
 ARG DUMP
 
-LABEL org.opencontainers.image.version="${VERSION}"
-
-# ---- Runtime defaults (can be overridden via env / docker-compose) ----
 ENV MODE=${MODE:-liteserver} \
     NETWORK=${NETWORK:-mainnet} \
     TELEMETRY=${TELEMETRY:-false} \
@@ -50,7 +51,7 @@ RUN wget https://raw.githubusercontent.com/ton-blockchain/mytonctrl/master/scrip
 USER root
 RUN printf '#!/bin/sh\nexit 0\n' > /usr/bin/systemctl && chmod +x /usr/bin/systemctl
 
-# ---- Start script for TON node (no daemonize: stays in foreground for Docker) ----
+# ---- Start script for TON node ----
 RUN cat <<'EOF' >/usr/local/bin/start-ton-node.sh
 #!/usr/bin/env bash
 set -e
@@ -67,9 +68,8 @@ exec /usr/bin/ton/validator-engine/validator-engine \
     --state-ttl 1000000000 \
     --archive-ttl 1000000000
 EOF
-RUN chmod +x /usr/local/bin/start-ton-node.sh
 
-# ---- EntryPoint: run installer ONCE per /var/ton-work, then start node ----
+# ---- Entrypoint: run installer once per /var/ton-work, then start node ----
 RUN cat <<'EOF' >/usr/local/bin/docker-entrypoint.sh
 #!/usr/bin/env bash
 set -e
@@ -86,10 +86,20 @@ if [ -n "$INSTALL_USER" ]; then INSTALL_FLAGS="$INSTALL_FLAGS -u $INSTALL_USER";
 
 MARKER=/var/ton-work/.mytonctrl-installed
 
-# Ensure ton-work dir exists (host should mount a volume here)
-mkdir -p /var/ton-work
+NEED_INSTALL=0
 
+# If marker missing, definitely install
 if [ ! -f "$MARKER" ]; then
+  NEED_INSTALL=1
+fi
+
+# Also install if TON binaries are missing
+if [ ! -x /usr/bin/ton/validator-engine/validator-engine ]; then
+  echo "[entrypoint] TON binaries not found, forcing installer"
+  NEED_INSTALL=1
+fi
+
+if [ "$NEED_INSTALL" -eq 1 ]; then
   echo "[entrypoint] Running MyTonCtrl installer with flags: $INSTALL_FLAGS"
   cd /home/ton
   PIP_BREAK_SYSTEM_PACKAGES=1 sudo -E bash ./install.sh $INSTALL_FLAGS
@@ -101,13 +111,15 @@ fi
 echo "[entrypoint] Starting TON node"
 /usr/local/bin/start-ton-node.sh
 EOF
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# ---- Fix CRLF if Dockerfile was edited on Windows ----
+RUN sed -i 's/\r$//' /usr/local/bin/start-ton-node.sh /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/start-ton-node.sh /usr/local/bin/docker-entrypoint.sh
 
 # ---- Run as ton by default ----
 USER ton
 ENV HOME=/home/ton
 
-# Common TON ports (adjust as needed)
 EXPOSE 30303 32768 4924 4925
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
