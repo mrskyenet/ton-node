@@ -2,31 +2,10 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ---- Build-time version (passed from docker-compose) ----
+# ---- Build-time version (for metadata) ----
 ARG VERSION
 LABEL org.opencontainers.image.version="${VERSION}"
 ENV TON_NODE_VERSION=${VERSION}
-
-# ---- Runtime defaults (overridable via env) ----
-ARG MODE
-ARG NETWORK
-ARG TELEMETRY
-ARG IGNORE_REQS
-ARG DUMP
-
-ENV MODE=${MODE:-liteserver} \
-    NETWORK=${NETWORK:-mainnet} \
-    TELEMETRY=${TELEMETRY:-false} \
-    IGNORE_REQS=${IGNORE_REQS:-true} \
-    DUMP=${DUMP:-true} \
-    INSTALL_USER=ton
-
-# Env vars used by install.sh (from docs)
-ENV ARCHIVE_TTL=2592000 \
-    STATE_TTL=0 \
-    ADD_SHARD="" \
-    ARCHIVE_BLOCKS="" \
-    COLLATE_SHARD="0:8000000000000000"
 
 # ---- Base packages ----
 RUN apt-get update && \
@@ -45,82 +24,45 @@ WORKDIR /home/ton
 
 # ---- Fetch installer script ----
 RUN wget https://raw.githubusercontent.com/ton-blockchain/mytonctrl/master/scripts/install.sh && \
-    chmod +x install.sh
+    chmod +x install.sh && \
+    sed -i 's/\r$//' install.sh
 
-# ---- Stub systemctl so install.sh doesn't crash inside container ----
+# ---- Stub systemctl so install.sh / mytoninstaller don't die in Docker ----
 USER root
 RUN printf '#!/bin/sh\nexit 0\n' > /usr/bin/systemctl && chmod +x /usr/bin/systemctl
 
-# ---- Start script for TON node ----
-RUN cat <<'EOF' >/usr/local/bin/start-ton-node.sh
-#!/usr/bin/env bash
-set -e
+# ---- Build TON + MyTonCtrl inside the image (no dump here) ----
+USER ton
+WORKDIR /home/ton
 
-echo "[start-ton-node] launching validator-engine"
+# NOTE: we do NOT use -d here to avoid baking a DB into the image.
+# We just build binaries + tooling; DB will live on the /ton volume at runtime.
+RUN PIP_BREAK_SYSTEM_PACKAGES=1 bash ./install.sh \
+    -m liteserver \
+    -n mainnet \
+    -t \
+    -i \
+    -u ton
 
-exec /usr/bin/ton/validator-engine/validator-engine \
-    --threads "$(nproc)" \
-    --global-config /usr/bin/ton/global.config.json \
-    --db /var/ton-work/db \
-    --logname /var/ton-work/log \
-    --verbosity 1 \
-    --permanent-celldb \
-    --state-ttl 1000000000 \
-    --archive-ttl 1000000000
-EOF
+# ---- Clean any DB created during build; we want runtime DB on the volume ----
+USER root
+RUN rm -rf /var/ton-work && mkdir -p /var/ton-work && chown ton:ton /var/ton-work
 
-# ---- Entrypoint: run installer once per /var/ton-work, then start node ----
-RUN cat <<'EOF' >/usr/local/bin/docker-entrypoint.sh
-#!/usr/bin/env bash
-set -e
-
-INSTALL_FLAGS=""
-
-# Build flags from env
-if [ "$DUMP" = "true" ]; then INSTALL_FLAGS="$INSTALL_FLAGS -d"; fi
-if [ -n "$MODE" ]; then INSTALL_FLAGS="$INSTALL_FLAGS -m $MODE"; fi
-if [ -n "$NETWORK" ]; then INSTALL_FLAGS="$INSTALL_FLAGS -n $NETWORK"; fi
-if [ "$TELEMETRY" = "false" ]; then INSTALL_FLAGS="$INSTALL_FLAGS -t"; fi
-if [ "$IGNORE_REQS" = "true" ]; then INSTALL_FLAGS="$INSTALL_FLAGS -i"; fi
-if [ -n "$INSTALL_USER" ]; then INSTALL_FLAGS="$INSTALL_FLAGS -u $INSTALL_USER"; fi
-
-MARKER=/var/ton-work/.mytonctrl-installed
-
-NEED_INSTALL=0
-
-# If marker missing, definitely install
-if [ ! -f "$MARKER" ]; then
-  NEED_INSTALL=1
-fi
-
-# Also install if TON binaries are missing
-if [ ! -x /usr/bin/ton/validator-engine/validator-engine ]; then
-  echo "[entrypoint] TON binaries not found, forcing installer"
-  NEED_INSTALL=1
-fi
-
-if [ "$NEED_INSTALL" -eq 1 ]; then
-  echo "[entrypoint] Running MyTonCtrl installer with flags: $INSTALL_FLAGS"
-  cd /home/ton
-  PIP_BREAK_SYSTEM_PACKAGES=1 sudo -E bash ./install.sh $INSTALL_FLAGS
-  sudo touch "$MARKER"
-else
-  echo "[entrypoint] MyTonCtrl already installed, skipping installer"
-fi
-
-echo "[entrypoint] Starting TON node"
-/usr/local/bin/start-ton-node.sh
-EOF
-
-# ---- Fix CRLF if Dockerfile was edited on Windows ----
-RUN sed -i 's/\r$//' /usr/local/bin/start-ton-node.sh /usr/local/bin/docker-entrypoint.sh && \
-    chmod +x /usr/local/bin/start-ton-node.sh /usr/local/bin/docker-entrypoint.sh
-
-# ---- Run as ton by default ----
+# ---- Final runtime user ----
 USER ton
 ENV HOME=/home/ton
+WORKDIR /home/ton
 
-EXPOSE 30303 32768 4924 4925
+# Expose typical liteserver port (we'll map the real one from config.json at runtime)
+EXPOSE 30303 50982
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD []
+# ---- Default: just start validator-engine ----
+CMD ["/usr/bin/ton/validator-engine/validator-engine", \
+     "--threads","2", \
+     "--global-config","/usr/bin/ton/global.config.json", \
+     "--db","/var/ton-work/db", \
+     "--logname","/var/ton-work/log", \
+     "--verbosity","1", \
+     "--permanent-celldb", \
+     "--state-ttl","1000000000", \
+     "--archive-ttl","1000000000"]
