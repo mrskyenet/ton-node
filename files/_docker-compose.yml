@@ -13,6 +13,19 @@ services:
       - /ton:/var/ton-work
 
     environment:
+      MODE: "liteserver"
+      NETWORK: "mainnet"
+      TELEMETRY: "false"
+      IGNORE_REQS: "true"
+      INSTALL_USER: "ton"
+      ARCHIVE_TTL: "2592000"
+      STATE_TTL: "86400"
+
+    ports:
+      - "50982:50982/udp"
+      - "50982:50982/tcp"
+
+    environment:
       # These are no longer critical for the image at runtime, but you can keep them
       MODE: "liteserver"
       NETWORK: "mainnet"
