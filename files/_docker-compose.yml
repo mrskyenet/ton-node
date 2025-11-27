@@ -1,6 +1,11 @@
 services:
   ton-node:
-    image: mrskyenet/ton-node:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${TON_NODE_VERSION}
+    image: mrskyenet/ton-node:${TON_NODE_VERSION}
     container_name: ton-node
     restart: unless-stopped
 
@@ -8,15 +13,16 @@ services:
       - /ton:/var/ton-work
 
     environment:
-      MODE: "liteserver"          # -m liteserver
-      NETWORK: "mainnet"          # -n mainnet
-      DUMP: "true"                # -d (use dump)
-      TELEMETRY: "false"          # -t (disable telemetry)
-      IGNORE_REQS: "true"         # -i (skip 64GB RAM check)
-      INSTALL_USER: "ton"         # -u ton (installer user)
-      ARCHIVE_TTL: "2592000"      # 30 days
-      STATE_TTL: "86400"          # 1 day
+      # These are no longer critical for the image at runtime, but you can keep them
+      MODE: "liteserver"
+      NETWORK: "mainnet"
+      TELEMETRY: "false"
+      IGNORE_REQS: "true"
+      INSTALL_USER: "ton"
+      ARCHIVE_TTL: "2592000"
+      STATE_TTL: "86400"
 
     ports:
-      - "43635:43635/udp"
-      - "43635:43635/tcp"
+      # replace 50982 with whatever port is in config.json if it changes
+      - "50982:50982/udp"
+      - "50982:50982/tcp"
